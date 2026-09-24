@@ -16,3 +16,4 @@ stt-model/
 *.bak
 *.bak-*
 *.bak[0-9]
+work/
