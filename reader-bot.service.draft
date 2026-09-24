@@ -1,0 +1,19 @@
+[Unit]
+Description=Telegram reader: чтение рабочих чатов и напоминания владельцу
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tg-agent
+EnvironmentFile=/opt/tg-agent/.env
+ExecStart=/usr/bin/node /opt/tg-agent/reader-bot.mjs
+Restart=always
+RestartSec=5
+# Бот висит в длинном опросе Telegram по 30 секунд — это не зависание.
+TimeoutStopSec=15
+StandardOutput=append:/var/log/reader-bot.log
+StandardError=append:/var/log/reader-bot.log
+
+[Install]
+WantedBy=multi-user.target
