@@ -239,6 +239,25 @@ async function bindByProjectId(chatId, projectId) {
   if (info.url) await sendInstruction(chatId);
 }
 
+/** Кнопка «Подключить …» на портале — ссылка startgroup: Telegram должен
+ *  показать список групп. Если ссылка открылась через браузер, он вместо
+ *  этого приводит в личку и шлёт «/start <id проекта>». Тогда даём ту же
+ *  ссылку кнопкой уже внутри Telegram — так список групп открывается. */
+const PROJECT_ID_RE = /^c[a-z0-9]{20,32}$/;
+let botUsername = null;
+async function offerGroupButton(chatId, projectId, who) {
+  botUsername ??= (await tg("getMe", {})).username;
+  await tg("sendMessage", {
+    chat_id: chatId,
+    text:
+      `Telegram открыл ссылку здесь, а не в списке групп. Нажмите кнопку ниже и выберите чат клиента — ${who} подключится к проекту.\n\n` +
+      `Если кнопка не сработает: откройте чат клиента → название чата → «Добавить участника» → @${botUsername}.`,
+    reply_markup: {
+      inline_keyboard: [[{ text: "Выбрать чат клиента", url: `https://t.me/${botUsername}?startgroup=${projectId}` }]],
+    },
+  });
+}
+
 async function handleCommand(msg) {
   const chatId = msg.chat.id;
   // «/bind@ИмяБота ...» в группах — срезаем упоминание.
@@ -620,6 +639,10 @@ async function main() {
       // продюсеру «/bind», которую тот же фильтр и выбрасывал.
       const isBinding =
         inGroup && (command.startsWith("/start ") || command.startsWith("/bind"));
+      if (!inGroup && PROJECT_ID_RE.test(command.replace(/^\/start\s+/, "")) && command.startsWith("/start ")) {
+        await offerGroupButton(msg.chat.id, command.slice(7).trim(), "ИИнна").catch((e) => console.error("кнопка подключения:", e.message));
+        continue;
+      }
       if (!fromOwner && !isBinding) continue;
       if (fromOwner && !command.startsWith("/") && inGroup) continue;
 
