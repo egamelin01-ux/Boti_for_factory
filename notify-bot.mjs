@@ -239,23 +239,31 @@ async function bindByProjectId(chatId, projectId) {
   if (info.url) await sendInstruction(chatId);
 }
 
-/** Кнопка «Подключить …» на портале — ссылка startgroup: Telegram должен
- *  показать список групп. Если ссылка открылась через браузер, он вместо
- *  этого приводит в личку и шлёт «/start <id проекта>». Тогда даём ту же
- *  ссылку кнопкой уже внутри Telegram — так список групп открывается. */
+/** Кнопка «Подключить …» на портале — ссылка startgroup: в веб-версии
+ *  Telegram она открывает список групп. Приложение Telegram на компьютере
+ *  так не умеет: приводит в личку с ботом и шлёт «/start <id проекта>».
+ *  Тогда объясняем картинкой, как открыть ссылку в вебе (решение владельца
+ *  28.10.2026: подключать ботов только через веб-версию). */
 const PROJECT_ID_RE = /^c[a-z0-9]{20,32}$/;
-let botUsername = null;
-async function offerGroupButton(chatId, projectId, who) {
-  botUsername ??= (await tg("getMe", {})).username;
-  await tg("sendMessage", {
-    chat_id: chatId,
-    text:
-      `Telegram открыл ссылку здесь, а не в списке групп. Нажмите кнопку ниже и выберите чат клиента — ${who} подключится к проекту.\n\n` +
-      `Если кнопка не сработает: откройте чат клиента → название чата → «Добавить участника» → @${botUsername}.`,
-    reply_markup: {
-      inline_keyboard: [[{ text: "Выбрать чат клиента", url: `https://t.me/${botUsername}?startgroup=${projectId}` }]],
-    },
-  });
+const CONNECT_PICTURE = "/opt/tg-agent/connect-via-web.jpg";
+const CONNECT_CAPTION =
+  "Подключите меня через веб-версию Telegram (в браузере). Для этого нажмите то, что на картинке: " +
+  "в окне «Открыть приложение Telegram?» — «Отмена» (1), затем «Open in Web» (2) и выберите чат клиента.";
+let connectPictureId = null;
+async function sendConnectHelp(chatId) {
+  // Картинку загружаем один раз, дальше шлём по file_id.
+  if (connectPictureId) {
+    await tg("sendPhoto", { chat_id: chatId, photo: connectPictureId, caption: CONNECT_CAPTION });
+    return;
+  }
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", CONNECT_CAPTION);
+  form.append("photo", new Blob([fs.readFileSync(CONNECT_PICTURE)], { type: "image/jpeg" }), "connect-via-web.jpg");
+  const r = await fetch(`${API}/sendPhoto`, { method: "POST", body: form });
+  const d = await r.json();
+  if (!d.ok) throw new Error(`sendPhoto: ${d.description}`);
+  connectPictureId = d.result.photo?.at(-1)?.file_id ?? null;
 }
 
 async function handleCommand(msg) {
@@ -640,7 +648,7 @@ async function main() {
       const isBinding =
         inGroup && (command.startsWith("/start ") || command.startsWith("/bind"));
       if (!inGroup && PROJECT_ID_RE.test(command.replace(/^\/start\s+/, "")) && command.startsWith("/start ")) {
-        await offerGroupButton(msg.chat.id, command.slice(7).trim(), "ИИнна").catch((e) => console.error("кнопка подключения:", e.message));
+        await sendConnectHelp(msg.chat.id).catch((e) => console.error("подсказка подключения:", e.message));
         continue;
       }
       if (!fromOwner && !isBinding) continue;
